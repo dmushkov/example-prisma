@@ -1,9 +1,31 @@
 const express = require('express')
 const bodyParser = require('body-parser')
 const { PrismaClient } = require('@prisma/client')
+const { expressjwt: expressJwt } = require('express-jwt');
+const jwksRsa = require('jwks-rsa');
 
 const prisma = new PrismaClient()
 const app = express()
+
+const JWKSURI = process.env.JWKSURI || ''
+const AUDIENCE = process.env.AUDIENCE || ''
+const ISSUER = process.env.ISSUER || ''
+
+const checkJwt = expressJwt({
+  secret: jwksRsa.expressJwtSecret({
+    cache: true,
+    rateLimit: true,
+    jwksRequestsPerMinute: 5,
+    jwksUri: JWKSURI
+  }),
+
+  // Validate the audience and the issuer.
+  audience: AUDIENCE,
+  issuer: ISSUER,
+  algorithms: ['RS256']
+});
+
+app.use(checkJwt);
 
 app.use(bodyParser.json())
 app.use(express.static('public'))
