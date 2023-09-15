@@ -3,6 +3,12 @@ const bodyParser = require('body-parser')
 const { PrismaClient } = require('@prisma/client')
 const { expressjwt: expressJwt } = require('express-jwt');
 const jwksRsa = require('jwks-rsa');
+const jwtDecode = require('jwt-decode');
+const { unless } = require("express-unless");
+
+const guard = require('express-jwt-permissions')({
+  permissionsProperty: 'grants'
+})
 
 const prisma = new PrismaClient()
 const app = express()
@@ -25,16 +31,42 @@ const checkJwt = expressJwt({
   algorithms: ['RS256']
 });
 
-app.use(checkJwt);
+const decodeToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (authHeader) {
+    const token = authHeader.split(' ')[1];
+
+    try {
+      req.user = jwtDecode(token);
+      next();
+    }
+    catch (err) {
+      return res.sendStatus(403);;
+    }
+  } else {
+    res.sendStatus(401);
+  }
+};
+
+checkJwt.unless = unless;
+decodeToken.unless = unless;
+
+const routes = ['/','/api/']
+
+app.use(checkJwt.unless({  path: routes }));
+app.use(decodeToken.unless({ path: routes }));
 
 app.use(bodyParser.json())
 app.use(express.static('public'))
+
+
 
 app.get(`/api`, async (req, res) => {
   res.json({ up: true })
 })
 
-app.get(`/api/seed`, async (req, res) => {
+app.get(`/api/seed`, guard.check('read'), async (req, res) => {
   const seedUser = {
     email: 'jane@prisma.io',
     name: 'Jane',
@@ -80,7 +112,7 @@ app.get(`/api/seed`, async (req, res) => {
   }
 })
 
-app.post(`/api/user`, async (req, res) => {
+app.post(`/api/user`, guard.check('read'),  async (req, res) => {
   const result = await prisma.user.create({
     data: {
       ...req.body,
